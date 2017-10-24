@@ -1,0 +1,15 @@
+# Udacity capstone project dockerfile
+FROM capstone
+
+# reinstall pillow ignoring the cached version so as to properly link with the libjpeg. This allows us to read the jpeg encoding of the incoming image
+RUN pip install --no-cache-dir -I pillow
+
+# install matplotlib to aid the debugging of images
+RUN pip install matplotlib
+
+# install python-tk, a run-time dependency for matplotlib
+RUN apt-get install -y python-tk
+
+VOLUME ["/capstone"]
+VOLUME ["/root/.ros/log/"]
+WORKDIR /capstone/ros

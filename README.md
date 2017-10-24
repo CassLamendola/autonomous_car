@@ -24,10 +24,26 @@ Build the docker container
 ```bash
 docker build . -t capstone
 ```
+### Additional Steps to install packages for debugging images and properly translating to numpy arrays
+### (install into docker image capstone:v1.1)
+`docker build -f ./Dockerfile-addendum -t capstone:v1.1 . `
 
 Run the docker file
 ```bash
-docker run -p 127.0.0.1:4567:4567 -v $PWD:/capstone -v /tmp/log:/root/.ros/ --rm -it capstone
+docker run -p 127.0.0.1:4567:4567 -v $PWD:/capstone -v /tmp/log:/root/.ros/ --rm -it capstone:v1.1
+```
+
+### To view the image-gui perform the following steps:
+`./run-gui.sh`
+
+Export the current container's ID
+`export containerId=$(docker ps -l -q)`
+
+Grant the current container access to the xhost, for display.
+
+```bash
+xhost +local:`docker inspect --format='{{ .Config.Hostname }}' $containerId`
+`docker start $containerId`
 ```
 
 ### Usage
