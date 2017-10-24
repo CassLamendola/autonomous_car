@@ -3,8 +3,8 @@
 import rospy
 from geometry_msgs.msg import PoseStamped
 from styx_msgs.msg import Lane, Waypoint
-
 import math
+import sys
 
 '''
 This node will publish waypoints from the car's current position to some `x` distance ahead.
@@ -33,20 +33,62 @@ class WaypointUpdater(object):
 
         # TODO: Add a subscriber for /traffic_waypoint and /obstacle_waypoint below
 
+        self.final_waypoints_pub = rospy.Publisher('/final_waypoints', Lane, queue_size=1)
 
-        self.final_waypoints_pub = rospy.Publisher('final_waypoints', Lane, queue_size=1)
-
-        # TODO: Add other member variables you need below
+        # Add other member variables
+        self.waypoints = None
+        self.curr_pose = None
 
         rospy.spin()
 
-    def pose_cb(self, msg):
-        # TODO: Implement
-        pass
+    def next_waypoint(self):
+        # Make sure waypoints and current position are initialized
+        if self.waypoints and self.curr_pose:
+        
+            # Get coordinates for the car
+            car_pos = self.curr_pose
+            car_x = car_pos.x
+            car_y = car_pos.y
 
-    def waypoints_cb(self, waypoints):
-        # TODO: Implement
-        pass
+            min_dist = sys.maxsize
+            index = 0
+
+            # Find the closest waypoint to current position
+            for i, waypoint in enumerate(self.waypoints):
+                
+                # Get coordinates for the current waypoint
+                wp_pos = waypoint.pose
+                wp_x = wp_pos.pose.position.x
+                wp_y = wp_pos.pose.position.y
+
+                # Calculate distance
+                dist = math.sqrt((car_x - wp_x)**2 + (car_y - wp_y)**2)
+
+                    if dist < min_dist:
+                        min_dist = dist
+                        index = i
+
+            # Add 1 to the index just to make sure the first point is in front of the car
+            # TODO: Find a better way to determine if the nearest point is in front of the car
+            return index + 1
+
+    def pose_cb(self, msg):
+        # Update current position
+        self.curr_pose = msg.pose.pose.position
+        
+        # Find the next waypoint
+        next_wp = self.next_waypoint()
+
+        # Store next waypoints
+        waypoints = self.waypoints[next_wp: next_wp + LOOKAHEAD_WPS]
+
+        # Publish waypoints
+        message = Lane(waypoints=waypoints)
+        self.final_waypoints_pub.publish(message)
+
+    def waypoints_cb(self, lane):
+        # Published only once - doesn't change
+        self.waypoints = lane.waypoints
 
     def traffic_cb(self, msg):
         # TODO: Callback for /traffic_waypoint message. Implement
