@@ -64,9 +64,9 @@ class WaypointUpdater(object):
                 # Calculate distance
                 dist = math.sqrt((car_x - wp_x)**2 + (car_y - wp_y)**2)
 
-                    if dist < min_dist:
-                        min_dist = dist
-                        index = i
+                if dist < min_dist:
+                    min_dist = dist
+                    index = i
 
             # Add 1 to the index just to make sure the first point is in front of the car
             # TODO: Find a better way to determine if the nearest point is in front of the car
