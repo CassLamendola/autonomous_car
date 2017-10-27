@@ -3,6 +3,8 @@
 import rospy
 from geometry_msgs.msg import PoseStamped
 from styx_msgs.msg import Lane, Waypoint
+import numpy as np
+import matplotlib.pyplot as plt
 import math
 import sys
 
@@ -21,7 +23,7 @@ as well as to verify your TL classifier.
 TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
-LOOKAHEAD_WPS = 200 # Number of waypoints we will publish. You can change this number
+LOOKAHEAD_WPS = 150 # Number of waypoints we will publish. You can change this number
 
 
 class WaypointUpdater(object):
@@ -30,8 +32,6 @@ class WaypointUpdater(object):
 
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
         rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
-
-        # TODO: Add a subscriber for /traffic_waypoint and /obstacle_waypoint below
 
         self.final_waypoints_pub = rospy.Publisher('/final_waypoints', Lane, queue_size=1)
 
@@ -44,44 +44,65 @@ class WaypointUpdater(object):
     def next_waypoint(self):
         # Make sure waypoints and current position are initialized
         if self.waypoints and self.curr_pose:
-        
+
             # Get coordinates for the car
-            car_pos = self.curr_pose
+            car_pos = self.curr_pose.position
             car_x = car_pos.x
             car_y = car_pos.y
+
+            car_theta = 2 * math.asin(self.curr_pose.orientation.z)
+            car_heading_x = math.cos(car_theta)
+            car_heading_y = math.sin(car_theta)
 
             min_dist = sys.maxsize
             index = 0
 
             # Find the closest waypoint to current position
             for i, waypoint in enumerate(self.waypoints):
-                
+
                 # Get coordinates for the current waypoint
                 wp_pos = waypoint.pose
                 wp_x = wp_pos.pose.position.x
                 wp_y = wp_pos.pose.position.y
 
+                # ignore this point if it is behind the current heading of the car
+                # get the dot product between the current heading and the
+                # waypoint difference
+                waypoint_diff_x = wp_x - car_x
+                waypoint_diff_y = wp_y - car_y
+
+                car_heading_norm = car_heading_y * car_heading_y + car_heading_x * car_heading_x
+                car_heading_norm = math.sqrt(car_heading_norm)
+                waypoint_diff_norm = waypoint_diff_x * waypoint_diff_x + waypoint_diff_y * waypoint_diff_y
+                waypoint_diff_norm = math.sqrt(waypoint_diff_norm)
+
+                dot_prod = (car_heading_x * waypoint_diff_x + car_heading_y * waypoint_diff_y) / car_heading_norm / waypoint_diff_norm
+
+                if dot_prod < 0.2:
+                    # ignore points that are more than 79 degrees away from the current heading of the car
+                    continue
+
                 # Calculate distance
-                dist = math.sqrt((car_x - wp_x)**2 + (car_y - wp_y)**2)
+                dist = waypoint_diff_norm
 
                 if dist < min_dist:
                     min_dist = dist
                     index = i
 
-            # Add 1 to the index just to make sure the first point is in front of the car
-            # TODO: Find a better way to determine if the nearest point is in front of the car
-            return index + 1
+            return index
 
     def pose_cb(self, msg):
+
         # Update current position
-        self.curr_pose = msg.pose.position
-        
+        self.curr_pose = msg.pose
+
         # Find the next waypoint
         next_wp = self.next_waypoint()
 
         # Store next waypoints
         if next_wp:
-            waypoints = self.waypoints[next_wp: next_wp + LOOKAHEAD_WPS]
+            next_wp_end = next_wp + LOOKAHEAD_WPS if next_wp + LOOKAHEAD_WPS < len(self.waypoints) else len(self.waypoints) - 1
+            waypoints = self.waypoints[next_wp: next_wp_end]
 
             # Publish waypoints
             message = Lane(waypoints=waypoints)
@@ -90,7 +111,6 @@ class WaypointUpdater(object):
     def waypoints_cb(self, lane):
         # Published only once - doesn't change
         self.waypoints = lane.waypoints
-        print ("waypoints received")
 
     def traffic_cb(self, msg):
         # TODO: Callback for /traffic_waypoint message. Implement
