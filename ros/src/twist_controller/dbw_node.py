@@ -46,32 +46,80 @@ class DBWNode(object):
         max_lat_accel = rospy.get_param('~max_lat_accel', 3.)
         max_steer_angle = rospy.get_param('~max_steer_angle', 8.)
 
-        self.steer_pub = rospy.Publisher('/vehicle/steering_cmd',
-                                         SteeringCmd, queue_size=1)
         self.throttle_pub = rospy.Publisher('/vehicle/throttle_cmd',
                                             ThrottleCmd, queue_size=1)
         self.brake_pub = rospy.Publisher('/vehicle/brake_cmd',
                                          BrakeCmd, queue_size=1)
+        self.steer_pub = rospy.Publisher('/vehicle/steering_cmd',
+                                            SteeringCmd, queue_size=1)
 
-        # TODO: Create `TwistController` object
-        # self.controller = TwistController(<Arguments you wish to provide>)
+        self.controller = Controller(kp = 1., ki = 0., kd=10.)
 
-        # TODO: Subscribe to all the topics you need to
+        rospy.Subscriber('/twist_cmd', TwistStamped, self.twist_cmd_cb)
+        rospy.Subscriber('/current_velocity', TwistStamped, self.current_velocity_cb)
+        rospy.Subscriber('/vehicle/dbw_enabled', Bool, self.dbw_enabled_cb)
+        # rospy.Subscriber('/current_velocity', TwistStamped, self.current_velocity_cb)
+
+        # Initialiaze setpoint values and controller sampling values
+        self.linear_setpoint = None
+        self.angular_setpoint = None
+        self.current_linear_velocity = None
+        self.current_angular_velocity = None
+        self.previous_timestamp = None
+        self.current_timestamp = None
+        self.is_dbw_enabled = False
+        self.is_initialized = False
+        self.is_current_velocity_initialized = False
+        self.is_velocity_setpoint_initialized = False
 
         self.loop()
+
+    # Update dbw_enabled status
+    def dbw_enabled_cb(self, msg):
+        self.is_dbw_enabled = msg.data
+
+    # Update the current commanded vehicle motion rate setpoints
+    def twist_cmd_cb(self, msg):
+        self.previous_timestamp = self.current_timestamp
+        self.current_timestamp = msg.header.stamp
+        self.linear_setpoint = msg.twist.linear
+        self.angular_setpoint = msg.twist.angular
+
+        # Once a previous timestamp has been received, set the DBWNode as initialized
+        if self.previous_timestamp is not None:
+            self.is_velocity_setpoint_initialized = True
+
+        if self.is_current_velocity_initialized:
+            self.is_initialized = True
+
+    def current_velocity_cb(self, msg):
+        self.current_linear_velocity = msg.twist.linear
+        self.current_angular_velocity = msg.twist.angular
+        if self.is_velocity_setpoint_initialized:
+            self.is_initialized = True
 
     def loop(self):
         rate = rospy.Rate(50) # 50Hz
         while not rospy.is_shutdown():
-            # TODO: Get predicted throttle, brake, and steering using `twist_controller`
-            # You should only publish the control commands if dbw is enabled
-            # throttle, brake, steering = self.controller.control(<proposed linear velocity>,
-            #                                                     <proposed angular velocity>,
-            #                                                     <current linear velocity>,
-            #                                                     <dbw status>,
-            #                                                     <any other argument you need>)
-            # if <dbw is enabled>:
-            #   self.publish(throttle, brake, steer)
+
+            # if not yet initialized continue the loop
+            if not self.is_initialized or not self.is_dbw_enabled :
+                continue
+
+            sampling_time = self.current_timestamp - self.previous_timestamp
+
+            if sampling_time.to_sec() < 0.0001:
+                # continue if the sampling time was too low
+                continue
+
+            throttle, brake, steering = self.controller.control(self.linear_setpoint.x,
+                                                                self.angular_setpoint.z,
+                                                                self.current_linear_velocity.x,
+                                                                self.current_angular_velocity.z, # TODO: set current velocity
+                                                                sampling_time.to_sec(),
+                                                                self.is_dbw_enabled)
+            if self.is_dbw_enabled:
+                self.publish(throttle, brake, steering)
             rate.sleep()
 
     def publish(self, throttle, brake, steer):

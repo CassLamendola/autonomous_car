@@ -1,4 +1,4 @@
-docker run -it \
+sudo docker run -it \
     -p 127.0.0.1:4567:4567 -v $PWD:/capstone -v /tmp/log:/root/.ros/ \
     --env="DISPLAY" \
     --env="QT_X11_NO_MITSHM=1" \
