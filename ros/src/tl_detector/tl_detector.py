@@ -10,6 +10,8 @@ from light_classification.tl_classifier import TLClassifier
 import tf
 import cv2
 import yaml
+import sys
+import math
 
 STATE_COUNT_THRESHOLD = 3
 
@@ -22,8 +24,8 @@ class TLDetector(object):
         self.camera_image = None
         self.lights = []
 
-        sub1 = rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
-        sub2 = rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
+        sub1 = rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb, queue_size=1)
+        sub2 = rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb, queue_size=1)
 
         '''
         /vehicle/traffic_lights provides you with the location of the traffic light in 3D map space and
@@ -32,8 +34,8 @@ class TLDetector(object):
         simulator. When testing on the vehicle, the color state will not be available. You'll need to
         rely on the position of the light and the camera image to predict it.
         '''
-        sub3 = rospy.Subscriber('/vehicle/traffic_lights', TrafficLightArray, self.traffic_cb)
-        sub6 = rospy.Subscriber('/image_color', Image, self.image_cb)
+        sub3 = rospy.Subscriber('/vehicle/traffic_lights', TrafficLightArray, self.traffic_cb, queue_size=1)
+        sub6 = rospy.Subscriber('/image_color', Image, self.image_cb, queue_size=1)
 
         config_string = rospy.get_param("/traffic_light_config")
         self.config = yaml.load(config_string)
@@ -70,6 +72,7 @@ class TLDetector(object):
         """
         self.has_image = True
         self.camera_image = msg
+
         light_wp, state = self.process_traffic_lights()
 
         '''
@@ -90,6 +93,59 @@ class TLDetector(object):
             self.upcoming_red_light_pub.publish(Int32(self.last_wp))
         self.state_count += 1
 
+    def get_closest_index_to_pose(self, list_of_poses, pose):
+        """Get the index of the pose in list_of_poses that is closest to pose, that isn't already behind the heading
+            of pose
+
+        Args:
+            list_of_poses: A list of poses
+            pose: The pose to query against the list of poses
+
+        Returns:
+            int: index of the pose in list_of_poses that is closest to pose
+
+        """
+        car_x = pose.position.x
+        car_y = pose.position.y
+        car_theta = 2 * math.asin(pose.orientation.z)
+        car_heading_x = math.cos(car_theta)
+        car_heading_y = math.sin(car_theta)
+
+        min_dist = sys.maxsize
+        index = -1
+
+        # Find the closest waypoint to current position
+        for i, waypoint in enumerate(list_of_poses):
+
+            # Get coordinates for the current waypoint
+            wp_pos = waypoint.pose
+            wp_x = wp_pos.pose.position.x
+            wp_y = wp_pos.pose.position.y
+
+            # ignore this point if it is behind the current heading of the car
+            # get the dot product between the current heading and the
+            # waypoint difference
+            waypoint_diff_x = wp_x - car_x
+            waypoint_diff_y = wp_y - car_y
+
+            waypoint_diff_norm = waypoint_diff_x * waypoint_diff_x + waypoint_diff_y * waypoint_diff_y
+
+            dot_prod = (
+                       car_heading_x * waypoint_diff_x + car_heading_y * waypoint_diff_y)
+
+            if dot_prod < 0:
+                # ignore points that are behind the car's heading
+                continue
+
+            # Calculate distance
+            dist = waypoint_diff_norm
+
+            if dist < min_dist:
+                min_dist = dist
+                index = i
+
+        return index
+
     def get_closest_waypoint(self, pose):
         """Identifies the closest path waypoint to the given position
             https://en.wikipedia.org/wiki/Closest_pair_of_points_problem
@@ -100,8 +156,13 @@ class TLDetector(object):
             int: index of the closest waypoint in self.waypoints
 
         """
-        #TODO implement
-        return 0
+
+        index = -1
+
+        if self.waypoints:
+            index = self.get_closest_index_to_pose(self.waypoints.waypoints, pose)
+
+        return index
 
     def get_light_state(self, light):
         """Determines the current color of the traffic light
@@ -122,6 +183,22 @@ class TLDetector(object):
         #Get classification
         return self.light_classifier.get_classification(cv_image)
 
+    def get_closest_traffic_light_to_waypoint(self, waypoint_index):
+        """Get the closest traffic light index to the given wapoint index
+
+        Args:
+            waypoint_index: index of the waypoint
+
+        Returns:
+            int: index of the traffic light that is closest to the waypoint_index
+
+        """
+        index = -1
+        if self.lights and self.waypoints:
+            index = self.get_closest_index_to_pose(self.lights, self.waypoints.waypoints[waypoint_index].pose.pose)
+
+        return index
+
     def process_traffic_lights(self):
         """Finds closest visible traffic light, if one exists, and determines its
             location and color
@@ -132,13 +209,29 @@ class TLDetector(object):
 
         """
         light = None
+        stop_waypoint_index = -1
+
+        # return -1, TrafficLight.UNKNOWN
 
         # List of positions that correspond to the line to stop in front of for a given intersection
         stop_line_positions = self.config['stop_line_positions']
         if(self.pose):
             car_position = self.get_closest_waypoint(self.pose.pose)
 
-        #TODO find the closest visible traffic light (if one exists)
+            #TODO find the closest visible traffic light (if one exists)
+            light = self.get_closest_traffic_light_to_waypoint(car_position)
+            light = None if light == -1 else light
+
+            light_index = light
+            light = self.lights[light_index]
+
+            stop_waypoint_index = self.get_closest_waypoint(light.pose.pose)
+
+            # print("stop waypoint index: ", stop_waypoint_index, " state: ", light.state)
+
+        return stop_waypoint_index, light.state
+
+        ## TODO: Activate the section below once detection works
 
         if light:
             state = self.get_light_state(light)

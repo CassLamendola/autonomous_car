@@ -10,12 +10,13 @@ class Controller(object):
     def __init__(self, *args, **kwargs):
         wheel_base = 2.8498
         steer_ratio = 14.8
-        max_lat_accel = 3.
+        max_lat_accel = 1. # 3.
         max_steer_angle = 8.
 
         self.yaw_controller = YawController(wheel_base, steer_ratio, 0.00, max_lat_accel, max_steer_angle)
-        self.throttle_pid_controller = PID(1,0.01,10)
-        self.low_pass_filter = LowPassFilter(.1,1)
+        self.throttle_pid_controller = PID(5,0.01,1)
+        self.throttle_low_pass_filter = LowPassFilter(.1,1)
+        self.steering_pass_filter = LowPassFilter(1,1)
 
     def control(self, linear_setpoint, angular_setpoint, current_linear_velocity,
                     current_angular_velocity, sampling_time, is_dbw_enabled):
@@ -23,14 +24,19 @@ class Controller(object):
 
             forward_error = linear_setpoint - current_linear_velocity
             throttle = self.throttle_pid_controller.step(forward_error, sampling_time)
-            throttle = self.low_pass_filter.filt(throttle)
+            throttle = self.throttle_low_pass_filter.filt(throttle)
 
             steering = self.yaw_controller.get_steering(linear_setpoint, angular_setpoint, current_linear_velocity)
+            steering = self.steering_pass_filter.filt(steering)
 
-            print("linear setpoint: ", linear_setpoint)
-            print("current velocity: ", current_linear_velocity)
-            print("throttle: ", throttle)
-            print("angular: ", angular_setpoint)
-            print("steering: ", steering)
+            #  hacky way to apply brakes
+            brake = 100. if throttle < -0. else 0.
 
-            return throttle, 0., steering
+            # print("linear setpoint: ", linear_setpoint)
+            # print("current velocity: ", current_linear_velocity)
+            # print("throttle: ", throttle)
+            # print("brake: ", brake)
+            # print("angular: ", angular_setpoint)
+            # print("steering: ", steering)
+
+            return throttle, brake, steering

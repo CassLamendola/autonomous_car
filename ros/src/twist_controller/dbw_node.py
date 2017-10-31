@@ -67,7 +67,7 @@ class DBWNode(object):
         self.current_angular_velocity = None
         self.previous_timestamp = None
         self.current_timestamp = None
-        self.is_dbw_enabled = True
+        self.is_dbw_enabled = False
         self.is_initialized = False
         self.is_current_velocity_initialized = False
         self.is_velocity_setpoint_initialized = False
