@@ -107,12 +107,14 @@ class TLDetector(object):
         """
         car_x = pose.position.x
         car_y = pose.position.y
-        car_theta = 2 * math.asin(pose.orientation.z)
-        car_heading_x = math.cos(car_theta)
-        car_heading_y = math.sin(car_theta)
+        _, _, yaw = tf.transformations.euler_from_quaternion([pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w])        
+        car_heading_x = math.cos(yaw)
+        car_heading_y = math.sin(yaw)
 
         min_dist = sys.maxsize
-        index = -1
+        index = None
+        
+        #print "X: ", car_x, " Y: ", car_y, " Yaw: ", yaw, " HeadX: " , car_heading_x, " HeadY: ", car_heading_y
 
         # Find the closest waypoint to current position
         for i, waypoint in enumerate(list_of_poses):
@@ -128,19 +130,17 @@ class TLDetector(object):
             waypoint_diff_x = wp_x - car_x
             waypoint_diff_y = wp_y - car_y
 
-            waypoint_diff_norm = waypoint_diff_x * waypoint_diff_x + waypoint_diff_y * waypoint_diff_y
-
-            dot_prod = (
-                       car_heading_x * waypoint_diff_x + car_heading_y * waypoint_diff_y)
-
+            dot_prod = car_heading_x * waypoint_diff_x + car_heading_y * waypoint_diff_y
+            
             if dot_prod < 0:
                 # ignore points that are behind the car's heading
                 continue
 
-            # Calculate distance
-            dist = waypoint_diff_norm
+            # Calculate distance        
+            dist = (waypoint_diff_x * waypoint_diff_x) + (waypoint_diff_y * waypoint_diff_y)
 
             if dist < min_dist:
+                #print "dist: ", dist, "min_dist:", min_dist
                 min_dist = dist
                 index = i
 
@@ -157,7 +157,7 @@ class TLDetector(object):
 
         """
 
-        index = -1
+        index = None
 
         if self.waypoints:
             index = self.get_closest_index_to_pose(self.waypoints.waypoints, pose)
@@ -193,7 +193,15 @@ class TLDetector(object):
             int: index of the traffic light that is closest to the waypoint_index
 
         """
-        index = -1
+        index = None
+
+        
+        #if self.lights != None:        
+            #print "Total Lights: ", len(self.lights)
+
+#        if self.waypoints != None:       
+            #print "Total Waypoints: ", len(self.waypoints.waypoints)
+        
         if self.lights and self.waypoints:
             index = self.get_closest_index_to_pose(self.lights, self.waypoints.waypoints[waypoint_index].pose.pose)
 
@@ -208,36 +216,32 @@ class TLDetector(object):
             int: ID of traffic light color (specified in styx_msgs/TrafficLight)
 
         """
-        light = None
+        light_state = TrafficLight.UNKNOWN
         stop_waypoint_index = -1
 
         # return -1, TrafficLight.UNKNOWN
 
         # List of positions that correspond to the line to stop in front of for a given intersection
         stop_line_positions = self.config['stop_line_positions']
+        
         if(self.pose):
             car_position = self.get_closest_waypoint(self.pose.pose)
-
+            #print "car_position: ", car_position
+            
             #TODO find the closest visible traffic light (if one exists)
-            light = self.get_closest_traffic_light_to_waypoint(car_position)
-            light = None if light == -1 else light
+            light_index = self.get_closest_traffic_light_to_waypoint(car_position)
+            #print " light_index: ", light_index
+            
+            if light_index != None:
+                light = self.lights[light_index]
+                light_state = light.state
+                stop_waypoint_index = self.get_closest_waypoint(light.pose.pose)
+            else:
+                self.waypoints = None
 
-            light_index = light
-            light = self.lights[light_index]
-
-            stop_waypoint_index = self.get_closest_waypoint(light.pose.pose)
-
-            # print("stop waypoint index: ", stop_waypoint_index, " state: ", light.state)
-
-        return stop_waypoint_index, light.state
-
-        ## TODO: Activate the section below once detection works
-
-        if light:
-            state = self.get_light_state(light)
-            return light_wp, state
-        self.waypoints = None
-        return -1, TrafficLight.UNKNOWN
+        #print "stop waypoint index: ", stop_waypoint_index, "light state: ", light_state
+        
+        return stop_waypoint_index, light_state
 
 if __name__ == '__main__':
     try:

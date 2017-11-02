@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import math
 import sys
 import copy
+import tf
 
 '''
 This node will publish waypoints from the car's current position to some `x` distance ahead.
@@ -46,20 +47,27 @@ class WaypointUpdater(object):
         rospy.spin()
 
     def next_waypoint(self):
-        # Make sure waypoints and current position are initialized
+        index = None        
+        
+        # Make sure waypoints and current position are initialized        
         if self.waypoints and self.curr_pose:
 
             # Get coordinates for the car
-            car_pos = self.curr_pose.position
-            car_x = car_pos.x
-            car_y = car_pos.y
+            car_x = self.curr_pose.position.x
+            car_y = self.curr_pose.position.y
 
-            car_theta = 2 * math.asin(self.curr_pose.orientation.z)
-            car_heading_x = math.cos(car_theta)
-            car_heading_y = math.sin(car_theta)
+            #car_theta = 2 * math.asin(self.curr_pose.orientation.z)
+            #car_heading_x = math.cos(car_theta)
+            #car_heading_y = math.sin(car_theta)
+
+            _, _, yaw = tf.transformations.euler_from_quaternion([self.curr_pose.orientation.x, 
+                                                                  self.curr_pose.orientation.y, 
+                                                                  self.curr_pose.orientation.z, 
+                                                                  self.curr_pose.orientation.w])        
+            car_heading_x = math.cos(yaw)
+            car_heading_y = math.sin(yaw)
 
             min_dist = sys.maxsize
-            index = 0
 
             # Find the closest waypoint to current position
             for i, waypoint in enumerate(self.waypoints):
@@ -74,18 +82,15 @@ class WaypointUpdater(object):
                 # waypoint difference
                 waypoint_diff_x = wp_x - car_x
                 waypoint_diff_y = wp_y - car_y
-
-                car_heading_norm = car_heading_y * car_heading_y + car_heading_x * car_heading_x
-                waypoint_diff_norm = waypoint_diff_x * waypoint_diff_x + waypoint_diff_y * waypoint_diff_y
-
+                
                 dot_prod = (car_heading_x * waypoint_diff_x + car_heading_y * waypoint_diff_y)
 
-                if dot_prod < 0.:
+                if dot_prod <= 0.:
                     # ignore points that are behind the vehicle
                     continue
-
+                
                 # Calculate distance
-                dist = waypoint_diff_norm
+                dist = (waypoint_diff_x * waypoint_diff_x) + (waypoint_diff_y * waypoint_diff_y)
 
                 if dist < min_dist:
                     min_dist = dist
@@ -100,11 +105,13 @@ class WaypointUpdater(object):
 
         # Find the next waypoint
         next_wp = self.next_waypoint()
+        #print "NextWP: ", next_wp, "Waypoint Len: ", len(self.waypoints)
 
         # Store next waypoints
-        if next_wp:
-            next_wp_end = next_wp + LOOKAHEAD_WPS if next_wp + LOOKAHEAD_WPS < len(self.waypoints) else len(self.waypoints) - 1
+        if next_wp != None:
+            next_wp_end = next_wp + LOOKAHEAD_WPS if next_wp + LOOKAHEAD_WPS < len(self.waypoints) else len(self.waypoints)
             waypoints = copy.deepcopy(self.waypoints[next_wp: next_wp_end])
+            #print "NextWP_end: ", next_wp_end, "Short Waypoint Len: ", len(waypoints)
 
             # adjust waypoint information to traffic light information
             if self.next_traffic_stop_waypoint != -1 and self.next_traffic_stop_waypoint < next_wp_end:
