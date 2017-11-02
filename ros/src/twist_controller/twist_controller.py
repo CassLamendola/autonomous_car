@@ -14,9 +14,9 @@ class Controller(object):
         max_steer_angle = 8.
 
         self.yaw_controller = YawController(wheel_base, steer_ratio, 0.00, max_lat_accel, max_steer_angle)
-        self.throttle_pid_controller = PID(5,0.01,1)
-        self.throttle_low_pass_filter = LowPassFilter(.1,1)
-        self.steering_pass_filter = LowPassFilter(1,1)
+        self.throttle_pid_controller = PID(5,0.0,0.01)
+        self.throttle_low_pass_filter = LowPassFilter(1,.01)
+        self.steering_pass_filter = LowPassFilter(1,.1)
 
     def control(self, linear_setpoint, angular_setpoint, current_linear_velocity,
                     current_angular_velocity, sampling_time, is_dbw_enabled):
@@ -30,7 +30,7 @@ class Controller(object):
             steering = self.steering_pass_filter.filt(steering)
 
             #  hacky way to apply brakes
-            brake = 100. if throttle < -0. else 0.
+            brake = 1 * throttle**2 if throttle < 0. else 0.
 
             # print("linear setpoint: ", linear_setpoint)
             # print("current velocity: ", current_linear_velocity)

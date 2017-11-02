@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
 import rospy
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, TwistStamped
+
 from styx_msgs.msg import Lane, Waypoint
 from std_msgs.msg import Int32
 import numpy as np
@@ -9,7 +10,6 @@ import matplotlib.pyplot as plt
 import math
 import sys
 import copy
-import tf
 
 '''
 This node will publish waypoints from the car's current position to some `x` distance ahead.
@@ -26,7 +26,7 @@ as well as to verify your TL classifier.
 TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
-LOOKAHEAD_WPS = 150 # Number of waypoints we will publish. You can change this number
+LOOKAHEAD_WPS = 100 # Number of waypoints we will publish. You can change this number
 
 
 class WaypointUpdater(object):
@@ -36,6 +36,8 @@ class WaypointUpdater(object):
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb, queue_size=1)
         rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
         rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb, queue_size=1)
+        rospy.Subscriber('/current_velocity', TwistStamped, self.current_velocity_cb)
+
 
         self.final_waypoints_pub = rospy.Publisher('/final_waypoints', Lane, queue_size=1)
 
@@ -43,31 +45,28 @@ class WaypointUpdater(object):
         self.waypoints = None
         self.curr_pose = None
         self.next_traffic_stop_waypoint = -1
+        self.current_linear_velocity = None
+        self.current_angular_velocity = None
 
         rospy.spin()
 
     def next_waypoint(self):
-        index = None        
-        
-        # Make sure waypoints and current position are initialized        
+        # Make sure waypoints and current position are initialized
         if self.waypoints and self.curr_pose:
 
             # Get coordinates for the car
-            car_x = self.curr_pose.position.x
-            car_y = self.curr_pose.position.y
+            car_pos = self.curr_pose.position
+            car_x = car_pos.x
+            car_y = car_pos.y
 
-            #car_theta = 2 * math.asin(self.curr_pose.orientation.z)
-            #car_heading_x = math.cos(car_theta)
-            #car_heading_y = math.sin(car_theta)
+            car_theta = 2* math.acos(self.curr_pose.orientation.w) if self.curr_pose.orientation.w >= 0 else -2 * math.acos(-self.curr_pose.orientation.w)
 
-            _, _, yaw = tf.transformations.euler_from_quaternion([self.curr_pose.orientation.x, 
-                                                                  self.curr_pose.orientation.y, 
-                                                                  self.curr_pose.orientation.z, 
-                                                                  self.curr_pose.orientation.w])        
-            car_heading_x = math.cos(yaw)
-            car_heading_y = math.sin(yaw)
+            car_heading_x = math.cos(car_theta)
+            car_heading_y = math.sin(car_theta)
 
-            min_dist = sys.maxsize
+            min_dist = min_dist_euclid = sys.maxsize
+            index = 0
+            best_index_euclid = 0
 
             # Find the closest waypoint to current position
             for i, waypoint in enumerate(self.waypoints):
@@ -82,52 +81,86 @@ class WaypointUpdater(object):
                 # waypoint difference
                 waypoint_diff_x = wp_x - car_x
                 waypoint_diff_y = wp_y - car_y
-                
+
+                car_heading_norm = car_heading_y * car_heading_y + car_heading_x * car_heading_x
+                waypoint_diff_norm = waypoint_diff_x * waypoint_diff_x + waypoint_diff_y * waypoint_diff_y
+
                 dot_prod = (car_heading_x * waypoint_diff_x + car_heading_y * waypoint_diff_y)
 
-                if dot_prod <= 0.:
+                # if i == 5020:
+                #     print("dot product to 5020: ", dot_prod, "waypoint diff norm: ", waypoint_diff_norm, \
+                #           "waypoint_diff_x: ", waypoint_diff_x, "waypoint_diff_y: ", waypoint_diff_y, "car_heading_x: ", car_heading_x, "car_heading_y: ", car_heading_y)
+                # if i == 6280:
+                #     print("dot product to 6280: ", dot_prod, "waypoint diff norm: ", waypoint_diff_norm)
+
+                # Calculate distance
+                dist = waypoint_diff_norm
+
+                if dist < min_dist_euclid:
+                    min_dist_euclid = dist
+                    best_index_euclid = i
+
+                if dot_prod < 0.:
                     # ignore points that are behind the vehicle
                     continue
-                
-                # Calculate distance
-                dist = (waypoint_diff_x * waypoint_diff_x) + (waypoint_diff_y * waypoint_diff_y)
 
                 if dist < min_dist:
                     min_dist = dist
                     index = i
 
+            print("best_euclidean: ", best_index_euclid)
             return index
+
+    def current_velocity_cb(self, msg):
+        self.current_linear_velocity = msg.twist.linear
+        self.current_angular_velocity = msg.twist.angular
 
     def pose_cb(self, msg):
 
         # Update current position
         self.curr_pose = msg.pose
 
+        next_wp = None
+
         # Find the next waypoint
-        next_wp = self.next_waypoint()
-        #print "NextWP: ", next_wp, "Waypoint Len: ", len(self.waypoints)
+        next_wp = self.next_waypoint() + 5
 
         # Store next waypoints
         if next_wp != None:
-            next_wp_end = next_wp + LOOKAHEAD_WPS if next_wp + LOOKAHEAD_WPS < len(self.waypoints) else len(self.waypoints)
-            waypoints = copy.deepcopy(self.waypoints[next_wp: next_wp_end])
-            #print "NextWP_end: ", next_wp_end, "Short Waypoint Len: ", len(waypoints)
+
+            next_wp_2 = next_wp_end_2 = next_wp_end = None
+
+            if next_wp + LOOKAHEAD_WPS < len(self.waypoints):
+                next_wp_end = next_wp + LOOKAHEAD_WPS
+                waypoints = copy.deepcopy(self.waypoints[next_wp: next_wp_end])
+                print("lower, next_traffic, upper ", next_wp, self.next_traffic_stop_waypoint, next_wp_end)
+            else:
+                next_wp_end = len(self.waypoints) - 1
+                waypoints = copy.deepcopy(self.waypoints[next_wp: next_wp_end])
+                next_wp_2 = 0
+                next_wp_end_2 = LOOKAHEAD_WPS - len(waypoints)
+                waypoints = copy.deepcopy(self.waypoints[:next_wp_end_2])
+                print("lower, next_traffic, upper ", next_wp, self.next_traffic_stop_waypoint, next_wp_end_2)
 
             # adjust waypoint information to traffic light information
-            if self.next_traffic_stop_waypoint != -1 and self.next_traffic_stop_waypoint < next_wp_end:
-                # assume current speed is the same as the setpoint at the first waypoint
-                current_speed = waypoints[0].twist.twist.linear.x
-                max_deceleration = .1 # m/(s**2)
-                stopping_time = current_speed / max_deceleration
-                stopping_distance2 = (stopping_time * current_speed)**2 # Use square of the distance to avoid costly calculation
+            if self.next_traffic_stop_waypoint != -1 and \
+                    (next_wp_end > self.next_traffic_stop_waypoint > next_wp \
+                    or next_wp_end_2 > self.next_traffic_stop_waypoint > next_wp_2 \
+                     ):
 
+                car_pos = self.curr_pose.position
+                car_x = car_pos.x
+                car_y = car_pos.y
+                distance_to_stop_light2 = (car_x - self.waypoints[self.next_traffic_stop_waypoint].pose.pose.position.x)**2 + \
+                                          (car_y - self.waypoints[self.next_traffic_stop_waypoint].pose.pose.position.y)**2
+
+                # assume current speed is the same as the setpoint at the first waypoint
                 for i in range(len(waypoints)):
                     # if the waypoint is before the traffic stop
                     if i+next_wp < self.next_traffic_stop_waypoint:
-                        distance_to_stop_light2 = self.distance2_simple(self.waypoints, i+next_wp, self.next_traffic_stop_waypoint)
-                        if distance_to_stop_light2 <= stopping_distance2:
-                            waypoints[i].twist.twist.linear.x *= distance_to_stop_light2 / stopping_distance2
+                        waypoints[i].twist.twist.linear.x = max(0, min(-1 +.25*math.sqrt(distance_to_stop_light2), 11.1))
                     else:
+                        waypoints[i].twist.twist.linear.x *= 0  # (distance_to_stop_light2 / stopping_distance2)
                         pass
                         # defaults to the original velocity
             else:
@@ -136,7 +169,7 @@ class WaypointUpdater(object):
 
             # The snippet below prints the delay in this callback relative to the incoming msg creation time
             now = rospy.get_rostime()
-            # print("Delay in pose callback: ", (now - msg.header.stamp).to_sec() )
+            print("Delay in pose callback: ", (now - msg.header.stamp).to_sec() )
             # Publish waypoints
             message = Lane(waypoints=waypoints)
             self.final_waypoints_pub.publish(message)
