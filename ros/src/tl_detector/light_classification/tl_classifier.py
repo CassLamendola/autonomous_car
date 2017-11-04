@@ -1,5 +1,7 @@
 from styx_msgs.msg import TrafficLight
 
+import cv2
+
 class TLClassifier(object):
     def __init__(self):
         #TODO load classifier
@@ -16,4 +18,39 @@ class TLClassifier(object):
 
         """
         #TODO implement light color prediction
-        return TrafficLight.UNKNOWN
+	
+	# Apply blur to image
+
+	bgr_image_blur = cv2.medianBlur(image, 3)
+
+	# Convert input image to HSV
+	hsv_image = cv2.cvtColor(bgr_image_blur, cv2.COLOR_BGR2HSV)
+
+	# Threshold the HSV image, keep only the red pixels
+	lower_red_hue_range = cv2.inRange(hsv_image, (0, 100, 100), (5, 255, 255))
+	upper_red_hue_range = cv2.inRange(hsv_image, (160, 100, 100), (179, 255, 255))
+
+	# Combine the above two images
+	red_hue_image_combined = cv2.addWeighted(lower_red_hue_range, 1.0, upper_red_hue_range, 1.0, 0.0)
+	red_hue_image_blur = cv2.GaussianBlur(red_hue_image_combined, (9, 9), 2, 2)
+
+	# Use the Hough transform to detect circles in the combined threshold image
+	circles = cv2.HoughCircles(red_hue_image_blur, cv2.HOUGH_GRADIENT, 1, red_hue_image_blur.shape[0] / 8.0, 100, 20, 20, 1)
+	### second to last entry is the min circle size (20 is the best size for the sim, real life may be different)
+
+	# Loop over all detected circles and outline them on the original image
+
+	if circles is None or len(circles) == 0:
+		print("no red lights were found")
+		return TrafficLight.GREEN
+	else:
+		print(len(circles[0]))
+		return TrafficLight.RED
+		
+	# Traffic light designations taken from styx_msgs/TrafficLight
+	#uint8 UNKNOWN=4
+	#uint8 GREEN=2
+	#uint8 YELLOW=1
+	#uint8 RED=0
+
+	# END TODO
