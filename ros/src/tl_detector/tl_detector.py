@@ -235,7 +235,10 @@ class TLDetector(object):
             if light_index != None:
                 light = self.lights[light_index]
                 light_state = light.state
-                stop_waypoint_index = self.get_closest_waypoint(light.pose.pose)
+                stop_light_pose=Pose()
+                stop_light_pose.position.x=stop_line_positions[light_index][0]
+                stop_light_pose.position.y=stop_line_positions[light_index][1]
+                stop_waypoint_index = self.get_closest_waypoint(stop_light_pose)
             else:
                 self.waypoints = None
 
