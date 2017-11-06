@@ -177,10 +177,10 @@ class TLDetector(object):
         if(not self.has_image):
             self.prev_light_loc = None
             return False
+	
+	###print self.camera_image.encoding
 
-        cv_image = self.bridge.imgmsg_to_cv2(self.camera_image, "bayer_grbg8")
-
-        cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BayerGR2BGR)
+        cv_image = self.bridge.imgmsg_to_cv2(self.camera_image, "bgr8") ###
 
         #Get classification
         return self.light_classifier.get_classification(cv_image)
@@ -232,7 +232,7 @@ class TLDetector(object):
             
             #TODO find the closest visible traffic light (if one exists)
             light_index = self.get_closest_traffic_light_to_waypoint(car_position)
-            #print " light_index: ", light_index
+            print " light_index: ", light_index ###
             
             if light_index != None:
                 light = self.lights[light_index]
@@ -243,6 +243,8 @@ class TLDetector(object):
                 stop_light_pose.position.y=stop_line_positions[light_index][1]
                 stop_waypoint_index = self.get_closest_waypoint(stop_light_pose)
             else:
+		light = self.lights[0]
+		light_state = self.get_light_state(light) ###
                 self.waypoints = None
 
         print "stop waypoint index: ", stop_waypoint_index, "light state: ", light_state
