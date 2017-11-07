@@ -194,7 +194,7 @@ class WaypointUpdater(object):
                 # if the waypoint is before the traffic stop
                 if i + self.car_wp_idx < self.tl_wp_idx:
                     self.final_Lane.waypoints[i].twist.twist.linear.x = max(0.,
-                                                            min(-1. + .5 * math.sqrt(distance_to_stop_light2),
+                                                            min(-2. + 1 * math.sqrt(distance_to_stop_light2),
                                                                 11.1))
                 else:
                     self.final_Lane.waypoints[i].twist.twist.linear.x = 0  # (distance_to_stop_light2 / stopping_distance2)
