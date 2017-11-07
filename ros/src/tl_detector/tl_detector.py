@@ -234,8 +234,7 @@ class TLDetector(object):
             
             if light_index != None:
                 light = self.lights[light_index]
-                ###light_state = light.state
-		light_state = self.get_light_state(light) ###
+                light_state = self.get_light_state(light)
                 stop_light_pose=Pose()
                 stop_light_pose.position.x=stop_line_positions[light_index][0]
                 stop_light_pose.position.y=stop_line_positions[light_index][1]

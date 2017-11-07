@@ -70,7 +70,7 @@ class WaypointUpdater(object):
             if self.system_ready:
                 self.car_wp_idx = self.next_waypoint()
                 self.update_final_waypoints()
-                print "Car WP Idx: ", self.car_wp_idx, " TL WP Idx: ", self.tl_wp_idx, " Yaw: ", self.yaw, " Vel: ", self.linear_velocity, "T_Vel: ", self.final_Lane.waypoints[0].twist.twist.linear.x
+                # print "Car WP Idx: ", self.car_wp_idx, " TL WP Idx: ", self.tl_wp_idx, " Yaw: ", self.yaw, " Vel: ", self.linear_velocity, "T_Vel: ", self.final_Lane.waypoints[0].twist.twist.linear.x
                 self.publish_final_waypoints()
             else:
                 self.check_system()
@@ -180,16 +180,46 @@ class WaypointUpdater(object):
   
         # If planning to apply the brakes
         if (self.car_wp_idx < self.tl_wp_idx < wp_end_idx) or (wp_end_idx == self.num_wp): 
-            num_final_wp = wp_end_idx - self.car_wp_idx
-            decel = 0.4 * self.linear_velocity / num_final_wp
-            curr_speed = 0
-            
-            # Update target velocities in reverse            
-            for i in range(num_final_wp - 1, -1, -1):
-                self.final_Lane.waypoints[i].twist.twist.linear.x =  np.floor(curr_speed)
-                curr_speed += decel
-                    
-  
+            num_final_wp = self.tl_wp_idx - self.car_wp_idx
+            decel = 0.2
+            curr_speed = -decel*10
+
+            distance_to_stop_light2 = self.wp_square_distance_between(self.car_wp_idx, self.tl_wp_idx)
+            print("current distance to light: ", distance_to_stop_light2)
+            critical_distance2 = 6.
+
+
+            # assume current speed is the same as the setpoint at the first waypoint
+            for i in range(len(self.final_Lane.waypoints)):
+                # if the waypoint is before the traffic stop
+                if i + self.car_wp_idx < self.tl_wp_idx:
+                    self.final_Lane.waypoints[i].twist.twist.linear.x = max(0.,
+                                                            min(-1. + .5 * math.sqrt(distance_to_stop_light2),
+                                                                11.1))
+                else:
+                    self.final_Lane.waypoints[i].twist.twist.linear.x = 0  # (distance_to_stop_light2 / stopping_distance2)
+                    pass
+                    # defaults to the original velocity
+
+            # if curr_distance_to_stoplight2 > critical_distance2:
+            #     # Update target velocities in reverse
+            #     for i in range(num_final_wp - 1, -1, -1):
+            #         curr_distance_to_stoplight2 = self.wp_square_distance_between(self.car_wp_idx + i, self.tl_wp_idx)
+            #         if curr_distance_to_stoplight2 < critical_distance2:
+            #             self.final_Lane.waypoints[i].twist.twist.linear.x = 0
+            #         else:
+            #             self.final_Lane.waypoints[i].twist.twist.linear.x = min( max(curr_speed, 0),
+            #                                                           self.final_Lane.waypoints[i].twist.twist.linear.x)
+            #         curr_speed += decel
+            #
+            #     for i in range(num_final_wp, LOOKAHEAD_WPS):
+            #         self.final_Lane.waypoints[i].twist.twist.linear.x = 0
+            #
+            # else: # passed critical distance. STOP!
+            #     for i in range(LOOKAHEAD_WPS):
+            #         self.final_Lane.waypoints[i].twist.twist.linear.x = 0
+
+
     def distance(self, waypoints, wp1, wp2):
         dist = 0
         dl = lambda a, b: math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2  + (a.z-b.z)**2)

@@ -15,7 +15,7 @@ class Controller(object):
 
         self.yaw_controller = YawController(wheel_base, steer_ratio, 0.00, max_lat_accel, max_steer_angle)
         #self.throttle_pid_controller = PID(5,0.01,1)
-        self.throttle_pid_controller = PID(25, 0.4, 0.1)
+        self.throttle_pid_controller = PID(5, 0., 0.01)
         self.throttle_low_pass_filter = LowPassFilter(.1,1)
         self.steering_pass_filter = LowPassFilter(1,1)
 
@@ -25,13 +25,18 @@ class Controller(object):
 
             forward_error = linear_setpoint - current_linear_velocity
             throttle = self.throttle_pid_controller.step(forward_error, sampling_time)
-            throttle = self.throttle_low_pass_filter.filt(throttle)
+            # throttle = self.throttle_low_pass_filter.filt(throttle)
 
             steering = self.yaw_controller.get_steering(linear_setpoint, angular_setpoint, current_linear_velocity)
             steering = self.steering_pass_filter.filt(steering)
 
-            #  hacky way to apply brakes
-            brake = 100. if throttle < -0. else 0.
+            #  apply breaks proportionally to the negative throttle
+            brake = 10 * abs(throttle) if throttle < -0. else 0.
+            # brake = min(brake,100)
+
+            # if the linear velocity setpoint is low enough, push the breaks to the metal
+            # if linear_setpoint < 0.:
+            #     brake = max(brake, 100)
 
             # print("linear setpoint: ", linear_setpoint)
             # print("current velocity: ", current_linear_velocity)
