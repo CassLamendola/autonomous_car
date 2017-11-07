@@ -2,11 +2,8 @@
 
 import rospy
 from geometry_msgs.msg import PoseStamped, TwistStamped
-from styx_msgs.msg import Lane, Waypoint
+from styx_msgs.msg import Lane
 from std_msgs.msg import Int32
-import numpy as np
-import matplotlib.pyplot as plt
-import math
 import copy
 import tf
 
@@ -26,7 +23,6 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
 LOOKAHEAD_WPS = 100 # Number of waypoints we will publish. You can change this number
-
 
 class WaypointUpdater(object):
     def __init__(self):
@@ -70,7 +66,7 @@ class WaypointUpdater(object):
             if self.system_ready:
                 self.car_wp_idx = self.next_waypoint()
                 self.update_final_waypoints()
-                print "Car WP Idx: ", self.car_wp_idx, " TL WP Idx: ", self.tl_wp_idx, " Yaw: ", self.yaw, " Vel: ", self.linear_velocity, "T_Vel: ", self.final_Lane.waypoints[0].twist.twist.linear.x
+                print "\nCar WP Idx: ", self.car_wp_idx, " TL WP Idx: ", self.tl_wp_idx, " Yaw: ", self.yaw, " Vel: ", self.linear_velocity, "T_Vel: ", self.final_Lane.waypoints[0].twist.twist.linear.x
                 self.publish_final_waypoints()
             else:
                 self.check_system()
@@ -118,23 +114,7 @@ class WaypointUpdater(object):
     def get_waypoint_position_at(self, wp_idx):
         return self.waypoints[wp_idx].pose.pose.position.x, self.waypoints[wp_idx].pose.pose.position.y
     
-    def get_waypoint_velocity(self, waypoints, wp_idx):
-        return waypoints[wp_idx].twist.twist.linear.x
 
-    def set_waypoint_velocity(self, waypoints, wp_idx, velocity):
-        waypoints[wp_idx].twist.twist.linear.x = velocity   
-        
-    def wp_square_distance_between(self, wp_idx1, wp_idx2):
-        # Validate inputs
-        if 0 <= wp_idx1 <= wp_idx2 <= len(self.waypoints):       
-            dist = 0
-            dl = lambda a, b: (a.x-b.x)**2 + (a.y-b.y)**2
-            for i in range(wp_idx1, wp_idx2):
-                dist += dl(self.waypoints[i].pose.pose.position, self.waypoints[i+1].pose.pose.position)
-            return dist
-        else:
-            return None
-            
     def next_waypoint(self):
         prev_dist = 999999999
         curr_dist = prev_dist - 1
@@ -171,39 +151,28 @@ class WaypointUpdater(object):
         
         wp_end_idx = self.car_wp_idx + LOOKAHEAD_WPS
         
-        # Scale down look ahead if at course end (do only 1 loop)
+        # Scale down look ahead if at course end (does only 1 loop)
         if wp_end_idx > self.num_wp:
             wp_end_idx = self.num_wp
         
         # Extract desired waypoints
         self.final_Lane.waypoints = copy.deepcopy(self.waypoints[self.car_wp_idx : wp_end_idx])
-  
-        # If planning to apply the brakes
-        if (self.car_wp_idx < self.tl_wp_idx < wp_end_idx) or (wp_end_idx == self.num_wp): 
+    
+        # Step-based braking profile. Allows car to creep up to the stop line.
+        if (self.car_wp_idx < self.tl_wp_idx < wp_end_idx) or (wp_end_idx == self.num_wp):
+            tl_offset = 15
+            idle_speed_mps = 3 
             num_final_wp = wp_end_idx - self.car_wp_idx
-            decel = 0.4 * self.linear_velocity / num_final_wp
-            curr_speed = 0
+            threshold_idx = self.tl_wp_idx - tl_offset - self.car_wp_idx
             
             # Update target velocities in reverse            
-            for i in range(num_final_wp - 1, -1, -1):
-                self.final_Lane.waypoints[i].twist.twist.linear.x =  np.floor(curr_speed)
-                curr_speed += decel
-                    
+            for i in range(0, num_final_wp - 1):
+                if (i > threshold_idx):
+                    self.final_Lane.waypoints[i].twist.twist.linear.x = 0
+                else:
+                    self.final_Lane.waypoints[i].twist.twist.linear.x =  idle_speed_mps
   
-    def distance(self, waypoints, wp1, wp2):
-        dist = 0
-        dl = lambda a, b: math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2  + (a.z-b.z)**2)
-        for i in range(wp1, wp2+1):
-            dist += dl(waypoints[wp1].pose.pose.position, waypoints[i].pose.pose.position)
-            wp1 = i
-        return dist
-
-    def distance2_simple(self, waypoints, wp1, wp2):
-        dist = 0
-        dl = lambda a, b: (a.x-b.x)**2 + (a.y-b.y)**2
-        dist += dl(waypoints[wp1].pose.pose.position, waypoints[wp2].pose.pose.position)
-        return dist
-        
+           
 if __name__ == '__main__':
     try:
         WaypointUpdater()
