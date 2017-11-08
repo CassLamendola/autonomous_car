@@ -22,7 +22,7 @@ as well as to verify your TL classifier.
 TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
-LOOKAHEAD_WPS = 100 # Number of waypoints we will publish. You can change this number
+LOOKAHEAD_WPS = 105 # Number of waypoints we will publish. You can change this number
 
 class WaypointUpdater(object):
     def __init__(self):
@@ -165,7 +165,7 @@ class WaypointUpdater(object):
             num_final_wp = wp_end_idx - self.car_wp_idx
             threshold_idx = self.tl_wp_idx - tl_offset - self.car_wp_idx
             
-            # Update target velocities in reverse            
+            # Update target velocities           
             for i in range(0, num_final_wp - 1):
                 if (i > threshold_idx):
                     self.final_Lane.waypoints[i].twist.twist.linear.x = 0
